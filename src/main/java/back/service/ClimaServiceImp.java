@@ -2,9 +2,12 @@ package back.service;
 
 import back.entity.Ciudad;
 import back.entity.Clima;
+import back.entity.Usuario;
+import back.security.UsuarioDetailService;
 import java.util.Objects;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -15,6 +18,12 @@ import util.Mensaje;
 public class ClimaServiceImp implements ClimaService {
 
     private final RestTemplate restTemplate;
+
+    @Autowired
+    private UsuarioDetailService usuarioDetail;
+
+    @Autowired
+    private HistorialServiceImp historialService;
 
     @Value(value = "${open.weather.urlCiudad}")
     private String urlPrincipalCiudad;
@@ -30,15 +39,20 @@ public class ClimaServiceImp implements ClimaService {
         this.restTemplate = restTemplate;
     }
 
+   
     @Override
+    @Cacheable("cacheClima")
     public ResponseEntity<?> getWeatherCity(String ciudad) {
 
         try {
 
-            Ciudad[] ciudades = this.getCities(ciudad);
+            Ciudad[] ciudades = this.getUrlCities(ciudad);
 
             if (!Objects.isNull(ciudades[0])) {
-                return Mensaje.respuesta(this.getWeatherFromCity(ciudades[0]), HttpStatus.OK);
+
+                this.guardarEnElHistorial(ciudades[0]);
+
+                return Mensaje.respuesta(ciudades[0], HttpStatus.OK);
             }
 
             return Mensaje.respuesta("No existen ciudades con el nombre:  " + ciudades[0].getName(), HttpStatus.BAD_REQUEST);
@@ -49,8 +63,7 @@ public class ClimaServiceImp implements ClimaService {
         return Mensaje.respuesta("Ocurrio un error", HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-
-    private Ciudad[] getCities(String ciudad) {
+    private Ciudad[] getUrlCities(String ciudad) {
         StringBuilder url = new StringBuilder();
 
         url.append(this.urlPrincipalCiudad);
@@ -61,12 +74,58 @@ public class ClimaServiceImp implements ClimaService {
         return this.restTemplate.getForObject(url.toString(), Ciudad[].class);
     }
 
-    private Clima getWeatherFromCity(Ciudad ciudad) {
+    
+    @Override
+    @Cacheable("cacheClima")
+    public ResponseEntity<?> getFiveDaysWeather(String ciudad) {
+
+        try {
+            Ciudad[] ciudades = this.getUrlCities(ciudad);
+
+            if (!Objects.isNull(ciudades[0])) {
+
+                Clima clima = this.getUrlWeather(ciudades[0]);
+
+                this.guardarEnElHistorial(ciudades[0]);
+
+                return Mensaje.respuesta(this.getUrlForecast(clima), HttpStatus.OK);
+
+            }
+
+            return Mensaje.respuesta("Ciudad no encontrada", HttpStatus.BAD_REQUEST);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return Mensaje.respuesta("Error interno", HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @Override
+    @Cacheable("cacheClima")
+    public ResponseEntity<?> getContaminacionAir(String ciudad) {
+
+        try {
+            Ciudad[] ciudades = this.getUrlCities(ciudad);
+
+            if (!Objects.isNull(ciudades[0])) {
+
+                this.guardarEnElHistorial(ciudades[0]);
+                
+                return Mensaje.respuesta(this.getUrlAirPollution(ciudades[0]), HttpStatus.OK);
+            }
+
+            return Mensaje.respuesta("Ciudad no encontrada", HttpStatus.BAD_REQUEST);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return Mensaje.respuesta("Error interno", HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+    
+    private Clima getUrlWeather(Ciudad ciudad) {
 
         StringBuilder url = new StringBuilder();
 
-        //https://api.openweathermap.org/data/2.5/weather?
-        //lat=44.34 &lon=10.99&appid=b5544bbd41d04fb47658d3757079d6b3
         url.append(this.urlWeatherCiudad).append("weather?");
         url.append("lat=").append(ciudad.getLat());
         url.append("&lon=").append(ciudad.getLon());
@@ -74,32 +133,8 @@ public class ClimaServiceImp implements ClimaService {
 
         return this.restTemplate.getForObject(url.toString(), Clima.class);
     }
-
-    @Override
-    public ResponseEntity<?> getFiveDaysWeather(String ciudad) {
-        
-        try {
-            Ciudad[] ciudades = this.getCities(ciudad);
-            
-            if (!Objects.isNull(ciudades[0])) {
-                
-                Clima clima = this.getWeatherFromCity(ciudades[0]);
-                
-                return Mensaje.respuesta(this.getForecast5(clima), HttpStatus.OK);
-                
-            }
-            
-            return Mensaje.respuesta("Ciudad no encontrada", HttpStatus.BAD_REQUEST);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        
-        return Mensaje.respuesta("Error interno", HttpStatus.INTERNAL_SERVER_ERROR);   
-    }
     
-    
-    
-    private Object getForecast5 (Clima clima) {
+    private Object getUrlForecast(Clima clima) {
 
         StringBuilder url = new StringBuilder();
 
@@ -110,36 +145,28 @@ public class ClimaServiceImp implements ClimaService {
         return this.restTemplate.getForObject(url.toString(), Object.class);
     }
 
-    @Override
-    public ResponseEntity<?> getContaminacionAir(String ciudad) {
-        
-        try {
-            Ciudad[] ciudades = this.getCities(ciudad);
-
-            
-            if (!Objects.isNull(ciudades[0])){
-                return Mensaje.respuesta(this.getAirPollutionFromCity(ciudades[0]), HttpStatus.OK);
-            }
-            
-            return Mensaje.respuesta("Ciudad no encontrada", HttpStatus.BAD_REQUEST);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        
-        return Mensaje.respuesta("Error interno", HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-    
-    private Object getAirPollutionFromCity(Ciudad ciudad) {
+    private Object getUrlAirPollution(Ciudad ciudad) {
 
         StringBuilder url = new StringBuilder();
 
-        //https://api.openweathermap.org/data/2.5/air_pollution?
-        //lat=44.34 &lon=10.99&appid=b5544bbd41d04fb47658d3757079d6b3
         url.append(this.urlWeatherCiudad).append("air_pollution?");
         url.append("lat=").append(ciudad.getLat());
         url.append("&lon=").append(ciudad.getLon());
         url.append("&appid=").append(this.api);
 
         return this.restTemplate.getForObject(url.toString(), Object.class);
+    }
+
+    private void guardarEnElHistorial(Ciudad ciudad) {
+        
+        StringBuilder sb = new StringBuilder();
+        Usuario usuario = this.usuarioDetail.getUsuarioDetail();
+        
+        sb.append("name: ").append(ciudad.getName());
+        sb.append(" &lat: ").append(ciudad.getLat());
+        sb.append(" &lon: ").append(ciudad.getLon());
+        sb.append(" &country: ").append(ciudad.getCountry());
+        
+        this.historialService.saveHistorial( sb.toString() , usuario);
     }
 }

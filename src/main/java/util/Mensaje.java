@@ -12,16 +12,4 @@ public class Mensaje {
     
 }
 
-class Log {
-    private String log;
-    
-    public Log(String log){
-        this.log = log;
-    }
-    
-    public String getLog(){
-        return this.log;
-    }
-
-}
 

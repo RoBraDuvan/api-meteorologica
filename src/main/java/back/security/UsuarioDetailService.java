@@ -27,10 +27,10 @@ public class UsuarioDetailService implements UserDetailsService{
             
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        log.info("dentro de loadUserByUsername {}", username);
+        log.info("dentro de loadUserByUsername :: {}", username);
         
         this.usuarioDetail = this.usuarioRepository.findByUsername(username);
-        
+                
         if(!Objects.isNull(this.usuarioDetail)){
             return new User(this.usuarioDetail.getUsername(), this.usuarioDetail.getPassword(), new ArrayList<>());
         } else {
